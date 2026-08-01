@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ascend_monitor}
+      POSTGRES_USER: ${POSTGRES_USER:-ascend}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ascend-change-me}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ascend_monitor}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ascend}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-ascend-change-me}
+      MONITOR_CONTEST_ID: ${MONITOR_CONTEST_ID:-41ffbad2024e4ccfa43520c57ffa7b9e}
+      MONITOR_SOURCE_PAGE_URL: ${MONITOR_SOURCE_PAGE_URL:-https://www.hiascend.com/developer/contests/details/41ffbad2024e4ccfa43520c57ffa7b9e?module=rank}
+      MONITOR_POLL_INTERVAL_MS: ${MONITOR_POLL_INTERVAL_MS:-120000}
+      MONITOR_INITIAL_DELAY_MS: ${MONITOR_INITIAL_DELAY_MS:-5000}
+      MONITOR_RETENTION_DAYS: ${MONITOR_RETENTION_DAYS:-90}
+      DETECTION_REGRESSION_PERCENT: ${DETECTION_REGRESSION_PERCENT:-15}
+      DETECTION_HIDING_PERCENT: ${DETECTION_HIDING_PERCENT:-25}
+      DETECTION_REBOUND_PERCENT: ${DETECTION_REBOUND_PERCENT:-15}
+      DETECTION_NEAR_BEST_PERCENT: ${DETECTION_NEAR_BEST_PERCENT:-5}
+      DETECTION_SUBMISSION_BURST: ${DETECTION_SUBMISSION_BURST:-8}
+      TZ: Asia/Shanghai
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  postgres_data:
