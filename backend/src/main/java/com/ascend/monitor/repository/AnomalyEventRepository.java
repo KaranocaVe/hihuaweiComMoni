@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.Modifying;
 
 public interface AnomalyEventRepository extends JpaRepository<AnomalyEvent, Long>, JpaSpecificationExecutor<AnomalyEvent> {
 
-    List<AnomalyEvent> findByPollRunIdAndTopic(UUID pollRunId, String topic);
+    List<AnomalyEvent> findByPollRunId(UUID pollRunId);
 
     List<AnomalyEvent> findBySnapshotIdIn(Collection<Long> snapshotIds);
 

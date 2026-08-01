@@ -61,8 +61,9 @@ public class LeaderboardPoller {
                 topicEntries.put(topic, rankClient.getAllPerformanceRanks(topic));
             }
             var outcome = persistenceService.persist(run.getId(), contest, topicEntries, Instant.now());
-            log.info("Poll complete run={} topics={} snapshots={} changed={} anomalies={}",
-                    run.getId(), topics.size(), outcome.snapshots(), outcome.changed(), outcome.anomalies());
+            log.info("Poll complete run={} topics={} snapshots={} changed={} storedEvents={} anomalies={}",
+                    run.getId(), topics.size(), outcome.snapshots(), outcome.changed(),
+                    outcome.storedEvents(), outcome.anomalies());
         } catch (Throwable error) {
             log.error("Poll failed run={}", run.getId(), error);
             persistenceService.markFailed(run.getId(), error, Instant.now());

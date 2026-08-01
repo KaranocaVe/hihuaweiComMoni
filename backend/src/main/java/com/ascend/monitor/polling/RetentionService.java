@@ -38,9 +38,9 @@ public class RetentionService {
     public void cleanup() {
         var cutoff = Instant.now().minus(properties.retentionDays(), ChronoUnit.DAYS);
         int anomalies = anomalyRepository.deleteByDetectedAtBefore(cutoff);
-        int snapshots = snapshotRepository.deleteByObservedAtBefore(cutoff);
+        int snapshots = snapshotRepository.deleteObsoleteBefore(cutoff);
         int runs = pollRunRepository.deleteCompletedBefore(cutoff);
-        log.info("Retention cleanup cutoff={} anomalies={} snapshots={} runs={}",
+        log.info("Retention cleanup cutoff={} anomalies={} obsoleteEvents={} runs={}",
                 cutoff, anomalies, snapshots, runs);
     }
 }

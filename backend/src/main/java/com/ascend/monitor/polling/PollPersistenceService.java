@@ -22,10 +22,12 @@ import com.ascend.monitor.detection.AnomalyDraft;
 import com.ascend.monitor.detection.DetectionEngine;
 import com.ascend.monitor.domain.AnomalyEvent;
 import com.ascend.monitor.domain.ChangeState;
+import com.ascend.monitor.domain.CurrentRanking;
 import com.ascend.monitor.domain.PollRun;
-import com.ascend.monitor.domain.PollStatus;
+import com.ascend.monitor.domain.RankingState;
 import com.ascend.monitor.domain.RankingSnapshot;
 import com.ascend.monitor.repository.AnomalyEventRepository;
+import com.ascend.monitor.repository.CurrentRankingRepository;
 import com.ascend.monitor.repository.PollRunRepository;
 import com.ascend.monitor.repository.RankingSnapshotRepository;
 import org.springframework.stereotype.Service;
@@ -39,15 +41,18 @@ public class PollPersistenceService {
 
     private final PollRunRepository pollRunRepository;
     private final RankingSnapshotRepository snapshotRepository;
+    private final CurrentRankingRepository currentRepository;
     private final AnomalyEventRepository anomalyRepository;
     private final DetectionEngine detectionEngine;
 
     public PollPersistenceService(PollRunRepository pollRunRepository,
                                   RankingSnapshotRepository snapshotRepository,
+                                  CurrentRankingRepository currentRepository,
                                   AnomalyEventRepository anomalyRepository,
                                   DetectionEngine detectionEngine) {
         this.pollRunRepository = pollRunRepository;
         this.snapshotRepository = snapshotRepository;
+        this.currentRepository = currentRepository;
         this.anomalyRepository = anomalyRepository;
         this.detectionEngine = detectionEngine;
     }
@@ -57,50 +62,67 @@ public class PollPersistenceService {
                                Map<String, List<RankEntry>> topicEntries, Instant observedAt) {
         PollRun run = pollRunRepository.findById(runId)
                 .orElseThrow(() -> new IllegalStateException("采集批次不存在: " + runId));
-        var previousRun = pollRunRepository.findTopByStatusOrderByCompletedAtDesc(PollStatus.SUCCESS).orElse(null);
-
-        var snapshots = new ArrayList<RankingSnapshot>();
+        var events = new ArrayList<RankingSnapshot>();
         var pendingAnomalies = new IdentityHashMap<RankingSnapshot, List<AnomalyDraft>>();
+        var currentUpdates = new IdentityHashMap<RankingSnapshot, CurrentUpdate>();
+        int snapshotCount = 0;
         int changedCount = 0;
 
         for (var topicEntry : topicEntries.entrySet()) {
             var topic = topicEntry.getKey();
             var currentByTeam = indexCurrent(topicEntry.getValue());
-            var previousByTeam = previousRun == null
-                    ? Map.<String, RankingSnapshot>of()
-                    : indexPrevious(snapshotRepository.findByPollRunIdAndTopic(previousRun.getId(), topic));
+            var previousByTeam = indexPrevious(currentRepository.findByContestIdAndTopic(contest.gameId(), topic));
 
             var teamKeys = new LinkedHashSet<String>();
             teamKeys.addAll(currentByTeam.keySet());
             teamKeys.addAll(previousByTeam.keySet());
 
             for (var teamKey : teamKeys) {
+                snapshotCount++;
                 var currentEntry = currentByTeam.get(teamKey);
                 var previous = previousByTeam.get(teamKey);
-                var snapshot = buildSnapshot(runId, contest.gameId(), topic, currentEntry, previous, observedAt);
-                snapshots.add(snapshot);
-                if (snapshot.getChangeState() != ChangeState.UNCHANGED
-                        && snapshot.getChangeState() != ChangeState.ABSENT) {
-                    changedCount++;
+                if (currentEntry == null && previous != null && !previous.isPresent()) {
+                    continue;
                 }
+                var snapshot = buildSnapshot(runId, contest.gameId(), topic, currentEntry, previous, observedAt);
+                if (snapshot.getChangeState() == ChangeState.UNCHANGED
+                        || snapshot.getChangeState() == ChangeState.ABSENT) {
+                    continue;
+                }
+                events.add(snapshot);
+                changedCount++;
                 pendingAnomalies.put(snapshot, detectionEngine.evaluate(previous, snapshot));
+                currentUpdates.put(snapshot, new CurrentUpdate(teamKey, previous));
             }
         }
 
-        snapshotRepository.saveAll(snapshots);
+        snapshotRepository.saveAll(events);
         snapshotRepository.flush();
 
+        var currentRows = new ArrayList<CurrentRanking>();
+        for (var event : events) {
+            var update = currentUpdates.get(event);
+            var current = update.previous() == null
+                    ? CurrentRanking.create(update.teamKey(), event)
+                    : update.previous();
+            if (update.previous() != null) {
+                current.apply(event);
+            }
+            currentRows.add(current);
+        }
+        currentRepository.saveAll(currentRows);
+
         var anomalyEvents = new ArrayList<AnomalyEvent>();
-        for (var snapshot : snapshots) {
+        for (var snapshot : events) {
             for (var draft : pendingAnomalies.getOrDefault(snapshot, List.of())) {
                 anomalyEvents.add(toEntity(snapshot, draft));
             }
         }
         anomalyRepository.saveAll(anomalyEvents);
-        run.complete(contest.gameName(), topicEntries.size(), snapshots.size(), changedCount,
+        run.complete(contest.gameName(), topicEntries.size(), snapshotCount, changedCount,
                 anomalyEvents.size(), observedAt);
         pollRunRepository.save(run);
-        return new PollOutcome(snapshots.size(), changedCount, anomalyEvents.size());
+        return new PollOutcome(snapshotCount, changedCount, events.size(), anomalyEvents.size());
     }
 
     @Transactional
@@ -112,7 +134,7 @@ public class PollPersistenceService {
     }
 
     private static RankingSnapshot buildSnapshot(UUID runId, String contestId, String topic,
-                                                  RankEntry current, RankingSnapshot previous,
+                                                  RankEntry current, RankingState previous,
                                                   Instant observedAt) {
         if (current == null) {
             return RankingSnapshot.create(
@@ -124,7 +146,11 @@ public class PollPersistenceService {
                     observedAt);
         }
 
+        var teamName = current.teamName().trim();
+        var unit = blankToNull(current.unit());
         var takeTime = positive(current.takeTime());
+        var lastCommitAt = parseSourceTime(current.lastCommit());
+        var fastest = Boolean.TRUE.equals(current.fastest());
         var priorBest = previous == null ? null : positive(previous.getBestTakeTime());
         var previousTakeTime = previous == null ? null : positive(previous.getTakeTime());
         var bestTakeTime = takeTime == null ? priorBest
@@ -139,26 +165,33 @@ public class PollPersistenceService {
                         .multiply(BigDecimal.valueOf(100))
                         .divide(previousTakeTime, 4, RoundingMode.HALF_UP);
 
-        var state = determineState(current, previous, takeTime);
+        var state = determineState(teamName, unit, current.ranking(), takeTime,
+                current.commitTimes(), lastCommitAt, fastest, previous);
         return RankingSnapshot.create(
                 runId, contestId, topic,
-                current.teamName().trim(), blankToNull(current.unit()), true,
-                current.ranking(), takeTime, current.commitTimes(), parseSourceTime(current.lastCommit()),
-                Boolean.TRUE.equals(current.fastest()), bestTakeTime,
+                teamName, unit, true,
+                current.ranking(), takeTime, current.commitTimes(), lastCommitAt,
+                fastest, bestTakeTime,
                 rankChange, takeTimeChange, commitDelta, state, observedAt);
     }
 
-    private static ChangeState determineState(RankEntry current, RankingSnapshot previous, BigDecimal takeTime) {
+    private static ChangeState determineState(String teamName, String unit, Integer ranking,
+                                              BigDecimal takeTime, Integer commitTimes,
+                                              Instant lastCommitAt, boolean fastest,
+                                              RankingState previous) {
         if (previous == null) {
             return ChangeState.NEW;
         }
         if (!previous.isPresent()) {
             return ChangeState.RETURNED;
         }
-        boolean unchanged = equal(previous.getRanking(), current.ranking())
+        boolean unchanged = equal(previous.getTeamName(), teamName)
+                && equal(previous.getUnit(), unit)
+                && equal(previous.getRanking(), ranking)
                 && equal(previous.getTakeTime(), takeTime)
-                && equal(previous.getCommitTimes(), current.commitTimes())
-                && equal(previous.getLastCommitAt(), parseSourceTime(current.lastCommit()));
+                && equal(previous.getCommitTimes(), commitTimes)
+                && equal(previous.getLastCommitAt(), lastCommitAt)
+                && previous.isFastest() == fastest;
         return unchanged ? ChangeState.UNCHANGED : ChangeState.CHANGED;
     }
 
@@ -172,8 +205,8 @@ public class PollPersistenceService {
         return result;
     }
 
-    private static Map<String, RankingSnapshot> indexPrevious(List<RankingSnapshot> entries) {
-        var result = new HashMap<String, RankingSnapshot>();
+    private static Map<String, CurrentRanking> indexPrevious(List<CurrentRanking> entries) {
+        var result = new HashMap<String, CurrentRanking>();
         for (var entry : entries) {
             result.put(normalize(entry.getTeamName()), entry);
         }
@@ -215,6 +248,9 @@ public class PollPersistenceService {
         return java.util.Objects.equals(left, right);
     }
 
-    public record PollOutcome(int snapshots, int changed, int anomalies) {
+    private record CurrentUpdate(String teamKey, CurrentRanking previous) {
+    }
+
+    public record PollOutcome(int snapshots, int changed, int storedEvents, int anomalies) {
     }
 }

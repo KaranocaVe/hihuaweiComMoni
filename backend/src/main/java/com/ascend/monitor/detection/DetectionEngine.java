@@ -8,6 +8,7 @@ import java.util.List;
 import com.ascend.monitor.config.MonitorProperties;
 import com.ascend.monitor.domain.AnomalyType;
 import com.ascend.monitor.domain.ChangeState;
+import com.ascend.monitor.domain.RankingState;
 import com.ascend.monitor.domain.RankingSnapshot;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +21,7 @@ public class DetectionEngine {
         this.thresholds = properties.detection();
     }
 
-    public List<AnomalyDraft> evaluate(RankingSnapshot previous, RankingSnapshot current) {
+    public List<AnomalyDraft> evaluate(RankingState previous, RankingSnapshot current) {
         var events = new ArrayList<AnomalyDraft>();
         if (previous == null) {
             return events;

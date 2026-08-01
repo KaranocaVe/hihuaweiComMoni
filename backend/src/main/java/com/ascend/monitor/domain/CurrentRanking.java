@@ -14,12 +14,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "ranking_snapshot")
-public class RankingSnapshot implements RankingState {
+@Table(name = "ranking_current")
+public class CurrentRanking implements RankingState {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, unique = true)
+    private Long snapshotId;
 
     private UUID pollRunId;
 
@@ -28,6 +31,9 @@ public class RankingSnapshot implements RankingState {
 
     @Column(nullable = false, length = 128)
     private String topic;
+
+    @Column(nullable = false)
+    private String teamKey;
 
     @Column(nullable = false)
     private String teamName;
@@ -60,40 +66,43 @@ public class RankingSnapshot implements RankingState {
     @Column(nullable = false)
     private Instant observedAt;
 
-    protected RankingSnapshot() {
+    protected CurrentRanking() {
     }
 
-    public static RankingSnapshot create(UUID pollRunId, String contestId, String topic,
-                                         String teamName, String unit, boolean present,
-                                         Integer ranking, BigDecimal takeTime, Integer commitTimes,
-                                         Instant lastCommitAt, boolean fastest, BigDecimal bestTakeTime,
-                                         Integer rankChange, BigDecimal takeTimeChangePct,
-                                         Integer commitDelta, ChangeState changeState, Instant observedAt) {
-        var snapshot = new RankingSnapshot();
-        snapshot.pollRunId = pollRunId;
-        snapshot.contestId = contestId;
-        snapshot.topic = topic;
-        snapshot.teamName = teamName;
-        snapshot.unit = unit;
-        snapshot.present = present;
-        snapshot.ranking = ranking;
-        snapshot.takeTime = takeTime;
-        snapshot.commitTimes = commitTimes;
-        snapshot.lastCommitAt = lastCommitAt;
-        snapshot.fastest = fastest;
-        snapshot.bestTakeTime = bestTakeTime;
-        snapshot.rankChange = rankChange;
-        snapshot.takeTimeChangePct = takeTimeChangePct;
-        snapshot.commitDelta = commitDelta;
-        snapshot.changeState = changeState;
-        snapshot.observedAt = observedAt;
-        return snapshot;
+    public static CurrentRanking create(String teamKey, RankingSnapshot event) {
+        var current = new CurrentRanking();
+        current.teamKey = teamKey;
+        current.apply(event);
+        return current;
+    }
+
+    public void apply(RankingSnapshot event) {
+        this.snapshotId = event.getId();
+        this.pollRunId = event.getPollRunId();
+        this.contestId = event.getContestId();
+        this.topic = event.getTopic();
+        this.teamName = event.getTeamName();
+        this.unit = event.getUnit();
+        this.present = event.isPresent();
+        this.ranking = event.getRanking();
+        this.takeTime = event.getTakeTime();
+        this.commitTimes = event.getCommitTimes();
+        this.lastCommitAt = event.getLastCommitAt();
+        this.fastest = event.isFastest();
+        this.bestTakeTime = event.getBestTakeTime();
+        this.rankChange = event.getRankChange();
+        this.takeTimeChangePct = event.getTakeTimeChangePct();
+        this.commitDelta = event.getCommitDelta();
+        this.changeState = event.getChangeState();
+        this.observedAt = event.getObservedAt();
     }
 
     public Long getId() { return id; }
+    public Long getSnapshotId() { return snapshotId; }
     public UUID getPollRunId() { return pollRunId; }
     public String getContestId() { return contestId; }
     public String getTopic() { return topic; }
+    public String getTeamKey() { return teamKey; }
     public String getTeamName() { return teamName; }
     public String getUnit() { return unit; }
     public boolean isPresent() { return present; }
