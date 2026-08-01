@@ -1,0 +1,28 @@
+{
+  "name": "ascend-commoni-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@douyinfe/semi-icons": "2.102.0",
+    "@douyinfe/semi-ui": "2.102.0",
+    "dayjs": "1.11.21",
+    "echarts": "6.1.0",
+    "echarts-for-react": "3.0.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.5",
+    "typescript": "5.9.3",
+    "vite": "8.2.0"
+  }
+}
