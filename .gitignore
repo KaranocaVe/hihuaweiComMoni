@@ -1,0 +1,34 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Operating-system and editor metadata
+.DS_Store
+._*
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Java / Maven build output
+backend/target/
+
+# Node.js / Vite / TypeScript build output
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Test and browser-automation artifacts
+coverage/
+output/
+playwright-report/
+test-results/
+.playwright-cli/
+
+# Runtime artifacts
+*.log
+*.pid
+*.pid.lock
