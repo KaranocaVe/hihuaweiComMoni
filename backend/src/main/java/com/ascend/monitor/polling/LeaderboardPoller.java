@@ -1,15 +1,21 @@
 package com.ascend.monitor.polling;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import com.ascend.monitor.client.AscendRankClient;
 import com.ascend.monitor.client.RankEntry;
 import com.ascend.monitor.client.SourceApiException;
 import com.ascend.monitor.config.MonitorProperties;
+import com.ascend.monitor.detection.TeamRiskScore;
+import com.ascend.monitor.detection.TeamRiskScorer;
 import com.ascend.monitor.domain.PollRun;
+import com.ascend.monitor.repository.AnomalyEventRepository;
 import com.ascend.monitor.repository.PollRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,14 +32,20 @@ public class LeaderboardPoller {
     private final MonitorProperties properties;
     private final PollRunRepository pollRunRepository;
     private final PollPersistenceService persistenceService;
+    private final AnomalyEventRepository anomalyRepository;
+    private final TeamRiskScorer teamRiskScorer;
 
     public LeaderboardPoller(AscendRankClient rankClient, MonitorProperties properties,
                              PollRunRepository pollRunRepository,
-                             PollPersistenceService persistenceService) {
+                             PollPersistenceService persistenceService,
+                             AnomalyEventRepository anomalyRepository,
+                             TeamRiskScorer teamRiskScorer) {
         this.rankClient = rankClient;
         this.properties = properties;
         this.pollRunRepository = pollRunRepository;
         this.persistenceService = persistenceService;
+        this.anomalyRepository = anomalyRepository;
+        this.teamRiskScorer = teamRiskScorer;
     }
 
     @Scheduled(fixedRateString = "${monitor.poll-interval-ms:120000}",
@@ -64,6 +76,15 @@ public class LeaderboardPoller {
             log.info("Poll complete run={} topics={} snapshots={} changed={} storedEvents={} anomalies={}",
                     run.getId(), topics.size(), outcome.snapshots(), outcome.changed(),
                     outcome.storedEvents(), outcome.anomalies());
+            var risks = teamRiskScorer.rank(anomalyRepository.summarizeTeamBehavior(
+                    contest.gameId(), Instant.now().minus(24, ChronoUnit.HOURS),
+                    properties.detection().hidingPercent(), properties.detection().nearBestPercent(),
+                    properties.detection().hidingMaxBestTimeRatio())).stream()
+                    .filter(risk -> risk.hidingEntries() > 0)
+                    .toList();
+            if (!risks.isEmpty()) {
+                log.info("Team hiding-pattern review window=24h top={}", formatTopRisks(risks));
+            }
         } catch (Throwable error) {
             log.error("Poll failed run={}", run.getId(), error);
             persistenceService.markFailed(run.getId(), error, Instant.now());
@@ -74,5 +95,21 @@ public class LeaderboardPoller {
 
     public boolean isRunning() {
         return running.get();
+    }
+
+    private static String formatTopRisks(List<TeamRiskScore> risks) {
+        return risks.stream().limit(5)
+                .map(risk -> risk.teamName() + "[" + risk.level() + ",score=" + risk.score()
+                        + ",submitRounds=" + risk.submissionRounds()
+                        + ",submitPerHour=" + String.format(Locale.ROOT, "%.2f", risk.submissionsPerHour())
+                        + ",activeTopics=" + risk.activeTopicCount()
+                        + ",hidingEntries=" + risk.hidingEntries()
+                        + ",recoveries=" + risk.recoveries()
+                        + ",longHold=" + risk.longHoldRecoveries()
+                        + ",medianRecoveryHours=" + String.format(Locale.ROOT, "%.2f",
+                        risk.medianRecoveryHours() == null ? 0.0 : risk.medianRecoveryHours())
+                        + ",scoreless=" + risk.scorelessSubmissions()
+                        + ",scorelessReturns=" + risk.scorelessReturns() + "]")
+                .collect(Collectors.joining("; "));
     }
 }

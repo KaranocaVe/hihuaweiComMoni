@@ -54,6 +54,11 @@ public class DashboardController {
         return dashboardService.anomalies(topic, teamName, type, hours, page, size);
     }
 
+    @GetMapping("/hiding-reviews")
+    List<HidingReviewDto> hidingReviews(@RequestParam(defaultValue = "24") int hours) {
+        return dashboardService.hidingReviews(hours);
+    }
+
     @GetMapping("/polls")
     List<PollRunDto> polls() {
         return dashboardService.pollRuns();

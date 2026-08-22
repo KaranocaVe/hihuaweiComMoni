@@ -50,8 +50,10 @@ monitor:
   detection:
     regression-percent: ${DETECTION_REGRESSION_PERCENT:15}
     hiding-percent: ${DETECTION_HIDING_PERCENT:25}
+    hiding-escalation-percent: ${DETECTION_HIDING_ESCALATION_PERCENT:10}
     rebound-percent: ${DETECTION_REBOUND_PERCENT:15}
     near-best-percent: ${DETECTION_NEAR_BEST_PERCENT:5}
+    hiding-max-best-time-ratio: ${DETECTION_HIDING_MAX_BEST_TIME_RATIO:2.0}
     submission-burst: ${DETECTION_SUBMISSION_BURST:8}
 
 logging:

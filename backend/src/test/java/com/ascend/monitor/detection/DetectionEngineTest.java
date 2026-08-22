@@ -22,7 +22,7 @@ class DetectionEngineTest {
         var properties = new MonitorProperties(
                 "contest", "https://example.com/api", "https://example.com/rank",
                 120_000, 0, 50, 1200, 90,
-                new MonitorProperties.Detection(15, 25, 15, 5, 8));
+                new MonitorProperties.Detection(15, 25, 10, 15, 5, 2.0, 8));
         engine = new DetectionEngine(properties);
     }
 
@@ -63,6 +63,35 @@ class DetectionEngineTest {
         var current = snapshot(true, "104", "95", 11, 1, "4", ChangeState.CHANGED);
 
         assertThat(engine.evaluate(previous, current)).isEmpty();
+    }
+
+    @Test
+    void doesNotRepeatHidingWhenGapIsAlreadyStable() {
+        var previous = snapshot(true, "140", "100", 10, null, null, ChangeState.CHANGED);
+        var current = snapshot(true, "145", "100", 11, 1, "3.5714", ChangeState.CHANGED);
+
+        assertThat(engine.evaluate(previous, current).stream().map(AnomalyDraft::type))
+                .doesNotContain(AnomalyType.POSSIBLE_HIDING);
+    }
+
+    @Test
+    void flagsHidingWhenGapEscalatesAfterAlreadyBeingHidden() {
+        var previous = snapshot(true, "140", "100", 10, null, null, ChangeState.CHANGED);
+        var current = snapshot(true, "160", "100", 11, 1, "14.2857", ChangeState.CHANGED);
+
+        assertThat(engine.evaluate(previous, current).stream().map(AnomalyDraft::type))
+                .contains(AnomalyType.POSSIBLE_HIDING);
+    }
+
+    @Test
+    void ignoresRelativeHidingWhenHistoricalBestIsTooWeakForTheTopic() {
+        var previous = snapshot(true, "140", "100", 10, null, null, ChangeState.CHANGED);
+        var current = snapshot(true, "103", "100", 12, 2, "-26.4286", ChangeState.CHANGED);
+
+        var types = engine.evaluate(previous, current, new BigDecimal("40"))
+                .stream().map(AnomalyDraft::type).toList();
+
+        assertThat(types).doesNotContain(AnomalyType.POSSIBLE_HIDING, AnomalyType.SCORE_REBOUND);
     }
 
     private static RankingSnapshot snapshot(boolean present, String takeTime, String bestTakeTime,

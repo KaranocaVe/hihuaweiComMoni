@@ -71,6 +71,11 @@ public class PollPersistenceService {
         for (var topicEntry : topicEntries.entrySet()) {
             var topic = topicEntry.getKey();
             var currentByTeam = indexCurrent(topicEntry.getValue());
+            var topicBestTime = topicEntry.getValue().stream()
+                    .map(RankEntry::takeTime)
+                    .filter(time -> time != null && time.signum() > 0)
+                    .min(BigDecimal::compareTo)
+                    .orElse(null);
             var previousByTeam = indexPrevious(currentRepository.findByContestIdAndTopic(contest.gameId(), topic));
 
             var teamKeys = new LinkedHashSet<String>();
@@ -91,7 +96,7 @@ public class PollPersistenceService {
                 }
                 events.add(snapshot);
                 changedCount++;
-                pendingAnomalies.put(snapshot, detectionEngine.evaluate(previous, snapshot));
+                pendingAnomalies.put(snapshot, detectionEngine.evaluate(previous, snapshot, topicBestTime));
                 currentUpdates.put(snapshot, new CurrentUpdate(teamKey, previous));
             }
         }

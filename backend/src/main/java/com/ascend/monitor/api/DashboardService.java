@@ -21,6 +21,8 @@ import com.ascend.monitor.domain.CurrentRanking;
 import com.ascend.monitor.domain.PollRun;
 import com.ascend.monitor.domain.PollStatus;
 import com.ascend.monitor.domain.RankingSnapshot;
+import com.ascend.monitor.detection.TeamRiskScore;
+import com.ascend.monitor.detection.TeamRiskScorer;
 import com.ascend.monitor.polling.LeaderboardPoller;
 import com.ascend.monitor.repository.AnomalyEventRepository;
 import com.ascend.monitor.repository.CurrentRankingRepository;
@@ -46,18 +48,21 @@ public class DashboardService {
     private final RankingSnapshotRepository snapshotRepository;
     private final CurrentRankingRepository currentRepository;
     private final AnomalyEventRepository anomalyRepository;
+    private final TeamRiskScorer teamRiskScorer;
 
     public DashboardService(MonitorProperties properties, LeaderboardPoller poller,
                             PollRunRepository pollRunRepository,
                             RankingSnapshotRepository snapshotRepository,
                             CurrentRankingRepository currentRepository,
-                            AnomalyEventRepository anomalyRepository) {
+                            AnomalyEventRepository anomalyRepository,
+                            TeamRiskScorer teamRiskScorer) {
         this.properties = properties;
         this.poller = poller;
         this.pollRunRepository = pollRunRepository;
         this.snapshotRepository = snapshotRepository;
         this.currentRepository = currentRepository;
         this.anomalyRepository = anomalyRepository;
+        this.teamRiskScorer = teamRiskScorer;
     }
 
     public SummaryResponse summary() {
@@ -180,6 +185,23 @@ public class DashboardService {
                 result.getNumber(), result.getSize(), result.getTotalPages(), result.getTotalElements());
     }
 
+    /**
+     * Produces a review queue from complete score episodes, not from the count of raw events.
+     * At least one entry into a clearly worse visible score is required before a team is shown.
+     */
+    public List<HidingReviewDto> hidingReviews(int hours) {
+        int safeHours = Math.max(1, Math.min(hours, properties.retentionDays() * 24));
+        var since = Instant.now().minus(safeHours, ChronoUnit.HOURS);
+        return teamRiskScorer.rank(anomalyRepository.summarizeTeamBehavior(
+                        properties.contestId(), since, properties.detection().hidingPercent(),
+                        properties.detection().nearBestPercent(),
+                        properties.detection().hidingMaxBestTimeRatio()), safeHours)
+                .stream()
+                .filter(risk -> risk.hidingEntries() > 0)
+                .map(DashboardService::toHidingReview)
+                .toList();
+    }
+
     public List<PollRunDto> pollRuns() {
         return pollRunRepository.findTop20ByOrderByStartedAtDesc().stream()
                 .map(DashboardService::toPollRun)
@@ -220,6 +242,13 @@ public class DashboardService {
                 event.getTeamName(), event.getType(), event.getSeverity(), event.getTitle(), event.getDescription(),
                 event.getPreviousTakeTime(), event.getCurrentTakeTime(), event.getBaselineTakeTime(),
                 event.getDetectedAt());
+    }
+
+    private static HidingReviewDto toHidingReview(TeamRiskScore risk) {
+        return new HidingReviewDto(risk.teamName(), risk.score(), risk.level(), risk.submissionRounds(),
+                risk.submissionsPerHour(), risk.activeTopicCount(), risk.hidingEntries(), risk.recoveries(),
+                risk.longHoldRecoveries(), risk.veryLongRecoveries(), risk.medianRecoveryHours(),
+                risk.scorelessSubmissions(), risk.scorelessReturns());
     }
 
     private static PollRunDto toPollRun(PollRun run) {

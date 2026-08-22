@@ -17,8 +17,10 @@ public record MonitorProperties(
     public record Detection(
             double regressionPercent,
             double hidingPercent,
+            double hidingEscalationPercent,
             double reboundPercent,
             double nearBestPercent,
+            double hidingMaxBestTimeRatio,
             int submissionBurst
     ) {
     }

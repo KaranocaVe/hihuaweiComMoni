@@ -138,6 +138,27 @@ public final class ApiModels {
     ) {
     }
 
+    /**
+     * Team-level review priority reconstructed from score trajectories.  It is deliberately
+     * separate from individual anomaly events: a score change on its own is not a conclusion.
+     */
+    public record HidingReviewDto(
+            String teamName,
+            int score,
+            String level,
+            long submissionRounds,
+            double submissionsPerHour,
+            int activeTopicCount,
+            long hidingEntries,
+            long recoveries,
+            long longHoldRecoveries,
+            long veryLongRecoveries,
+            Double medianRecoveryHours,
+            long scorelessSubmissions,
+            long scorelessReturns
+    ) {
+    }
+
     public record TeamSearchResponse(List<String> teams) {
     }
 }

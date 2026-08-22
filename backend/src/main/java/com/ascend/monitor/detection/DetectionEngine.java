@@ -22,6 +22,16 @@ public class DetectionEngine {
     }
 
     public List<AnomalyDraft> evaluate(RankingState previous, RankingSnapshot current) {
+        return evaluate(previous, current, null);
+    }
+
+    /**
+     * Evaluates a transition using the current topic's best visible performance as an
+     * absolute-quality reference. The two-argument overload remains useful for isolated
+     * signal tests where no topic-wide benchmark is available.
+     */
+    public List<AnomalyDraft> evaluate(RankingState previous, RankingSnapshot current,
+                                       BigDecimal topicBestTime) {
         var events = new ArrayList<AnomalyDraft>();
         if (previous == null) {
             return events;
@@ -53,6 +63,14 @@ public class DetectionEngine {
         var changePct = current.getTakeTimeChangePct();
         var commitDelta = current.getCommitDelta() == null ? 0 : current.getCommitDelta();
         var priorBest = previous.getBestTakeTime();
+        var previousGap = priorBest == null || priorBest.signum() <= 0
+                ? null : percent(previous.getTakeTime().subtract(priorBest), priorBest);
+        var currentGap = priorBest == null || priorBest.signum() <= 0
+                ? null : percent(current.getTakeTime().subtract(priorBest), priorBest);
+        boolean competitiveBest = topicBestTime == null || topicBestTime.signum() <= 0
+                || priorBest == null || priorBest.signum() <= 0
+                || priorBest.compareTo(topicBestTime.multiply(
+                        BigDecimal.valueOf(thresholds.hidingMaxBestTimeRatio()))) <= 0;
 
         if (commitDelta > 0 && changePct != null
                 && changePct.compareTo(BigDecimal.valueOf(thresholds.regressionPercent())) >= 0) {
@@ -65,24 +83,30 @@ public class DetectionEngine {
                     previous.getTakeTime(), current.getTakeTime(), priorBest));
         }
 
-        if (commitDelta > 0 && priorBest != null && priorBest.signum() > 0) {
-            var gapFromBest = percent(current.getTakeTime().subtract(priorBest), priorBest);
-            if (gapFromBest.compareTo(BigDecimal.valueOf(thresholds.hidingPercent())) >= 0) {
-                int severity = clamp(60 + gapFromBest.intValue() / 3, 60, 95);
+        if (commitDelta > 0 && currentGap != null) {
+            var gapEscalated = previousGap == null
+                    || currentGap.subtract(previousGap)
+                            .compareTo(BigDecimal.valueOf(thresholds.hidingEscalationPercent())) >= 0;
+            var materiallyRegressed = changePct != null
+                    && changePct.compareTo(BigDecimal.valueOf(thresholds.regressionPercent())) >= 0;
+            if (competitiveBest
+                    && currentGap.compareTo(BigDecimal.valueOf(thresholds.hidingPercent())) >= 0
+                    && (previousGap.compareTo(BigDecimal.valueOf(thresholds.hidingPercent())) < 0
+                    || gapEscalated || materiallyRegressed)) {
+                int severity = clamp(60 + currentGap.intValue() / 3, 60, 95);
                 events.add(new AnomalyDraft(
                         AnomalyType.POSSIBLE_HIDING,
                         severity,
                         "当前成绩显著低于历史最佳",
-                        "本轮发生了新提交，但当前耗时比本平台已观测到的历史最佳慢 " + display(gapFromBest)
+                        "本轮发生了新提交，但当前耗时比本平台已观测到的历史最佳慢 " + display(currentGap)
                                 + "%；这是一条疑似藏分信号，不等同于违规结论。",
                         previous.getTakeTime(), current.getTakeTime(), priorBest));
             }
         }
 
-        if (priorBest != null && priorBest.signum() > 0 && changePct != null) {
-            var previousGap = percent(previous.getTakeTime().subtract(priorBest), priorBest);
-            var currentGap = percent(current.getTakeTime().subtract(priorBest), priorBest);
-            if (previousGap.compareTo(BigDecimal.valueOf(thresholds.hidingPercent())) >= 0
+        if (previousGap != null && currentGap != null && changePct != null) {
+            if (competitiveBest
+                    && previousGap.compareTo(BigDecimal.valueOf(thresholds.hidingPercent())) >= 0
                     && changePct.compareTo(BigDecimal.valueOf(-thresholds.reboundPercent())) <= 0
                     && currentGap.compareTo(BigDecimal.valueOf(thresholds.nearBestPercent())) <= 0) {
                 events.add(new AnomalyDraft(

@@ -50,7 +50,7 @@ class PollPersistenceServiceTest {
         service = new PollPersistenceService(pollRunRepository, snapshotRepository,
                 currentRepository, anomalyRepository, detectionEngine);
         when(detectionEngine.evaluate(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
         when(snapshotRepository.saveAll(anyList())).thenAnswer(invocation -> {
             List<RankingSnapshot> events = invocation.getArgument(0);
             long id = 100;
