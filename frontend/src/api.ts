@@ -1,5 +1,6 @@
 import type {
   Anomaly,
+  HidingReview,
   HistoryResponse,
   PagedResponse,
   PollRun,
@@ -37,5 +38,6 @@ export const api = {
     page: number;
     size: number;
   }) => request<SimplePage<Anomaly>>('/api/anomalies', params),
+  hidingReviews: (hours = 24) => request<HidingReview[]>('/api/hiding-reviews', { hours }),
   polls: () => request<PollRun[]>('/api/polls'),
 };

@@ -118,6 +118,25 @@ export interface Anomaly {
   detectedAt: string;
 }
 
+export type HidingReviewLevel = 'HIGH' | 'WATCH' | 'LOW';
+
+/** A team-level review priority reconstructed from score trajectories, not a violation finding. */
+export interface HidingReview {
+  teamName: string;
+  score: number;
+  level: HidingReviewLevel;
+  submissionRounds: number;
+  submissionsPerHour: number;
+  activeTopicCount: number;
+  hidingEntries: number;
+  recoveries: number;
+  longHoldRecoveries: number;
+  veryLongRecoveries: number;
+  medianRecoveryHours?: number;
+  scorelessSubmissions: number;
+  scorelessReturns: number;
+}
+
 export interface SimplePage<T> {
   items: T[];
   totalElements: number;

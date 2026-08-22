@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Select, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh, IconSearch } from '@douyinfe/semi-icons';
+import ReactECharts from 'echarts-for-react';
+import type { EChartsOption } from 'echarts';
 import { api } from '../api';
 import { anomalyLabels, formatDuration, formatPercent, formatTime, severityColor } from '../format';
 import type { PagedResponse, RankingRow, TopicSummary } from '../types';
@@ -34,6 +36,66 @@ export function RankingPanel({ topics, topic, onTopicChange, onTeamSelect }: Ran
   useEffect(() => {
     void load();
   }, [load]);
+
+  const performanceComparisonOption = useMemo<EChartsOption>(() => {
+    const rows = data?.items ?? [];
+    const teams = rows.map((row) => row.teamName);
+    const hasManyTeams = teams.length > 15;
+    return {
+      color: ['#325dff', '#12b76a'],
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: unknown) => {
+          const values = params as Array<{ marker: string; seriesName: string; value?: number; axisValue: string }>;
+          if (!values.length) return '';
+          return [values[0].axisValue, ...values.map((item) =>
+            `${item.marker}${item.seriesName}: ${formatDuration(item.value)}`)].join('<br/>');
+        },
+      },
+      legend: { top: 0, data: ['当前耗时', '平台观测最佳耗时'], textStyle: { color: '#667085' } },
+      grid: { left: 142, right: hasManyTeams ? 46 : 22, top: 48, bottom: 22, containLabel: false },
+      xAxis: {
+        type: 'value',
+        min: 0,
+        name: '耗时（μs，越小越好）',
+        nameTextStyle: { color: '#667085' },
+        axisLabel: { color: '#667085', formatter: (value: number) => value === 0 ? '' : formatDuration(value) },
+        splitLine: { lineStyle: { color: '#eaecf0' } },
+      },
+      yAxis: {
+        type: 'category',
+        inverse: true,
+        data: teams,
+        axisLabel: {
+          color: '#344054',
+          width: 126,
+          overflow: 'truncate',
+        },
+        axisTick: { show: false },
+      },
+      dataZoom: hasManyTeams ? [
+        { type: 'inside', yAxisIndex: 0, startValue: 0, endValue: 14 },
+        { type: 'slider', yAxisIndex: 0, right: 5, width: 12, startValue: 0, endValue: 14 },
+      ] : [],
+      series: [
+        {
+          name: '当前耗时',
+          type: 'bar',
+          barMaxWidth: 14,
+          data: rows.map((row) => row.takeTime ?? null),
+          itemStyle: { borderRadius: [0, 4, 4, 0] },
+        },
+        {
+          name: '平台观测最佳耗时',
+          type: 'bar',
+          barMaxWidth: 14,
+          data: rows.map((row) => row.bestTakeTime ?? null),
+          itemStyle: { borderRadius: [0, 4, 4, 0] },
+        },
+      ],
+    };
+  }, [data]);
 
   const columns = [
     {
@@ -139,7 +201,23 @@ export function RankingPanel({ topics, topic, onTopicChange, onTeamSelect }: Ran
         {data && data.items.length === 0 ? (
           <Empty title="没有匹配的在榜队伍" />
         ) : (
-          <Table columns={columns} dataSource={data?.items ?? []} pagination={false} rowKey="snapshotId" />
+          <>
+            {data && data.items.length > 0 ? (
+              <section className="ranking-comparison" aria-label="当前耗时与平台观测最佳耗时对比图">
+                <div className="ranking-comparison-heading">
+                  <div>
+                    <strong>成绩对比</strong>
+                    <Typography.Text type="tertiary" size="small">
+                      当前页队伍：当前耗时与平台观测到的最佳耗时（数值越小越好）
+                    </Typography.Text>
+                  </div>
+                  {data.items.length > 15 ? <Typography.Text type="tertiary" size="small">可滚动查看全部队伍</Typography.Text> : null}
+                </div>
+                <ReactECharts option={performanceComparisonOption} style={{ height: 430 }} />
+              </section>
+            ) : null}
+            <Table columns={columns} dataSource={data?.items ?? []} pagination={false} rowKey="snapshotId" />
+          </>
         )}
       </Spin>
       {data && data.totalElements > pageSize ? (

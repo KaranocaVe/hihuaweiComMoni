@@ -226,6 +226,24 @@ button, input { font: inherit; }
 
 .rank-number { font-weight: 600; }
 
+.ranking-comparison {
+  padding: 16px 16px 4px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.ranking-comparison-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ranking-comparison-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .metric-worse,
 .metric-better {
   margin-top: 2px;
@@ -293,9 +311,69 @@ button, input { font: inherit; }
 .severity-high { color: var(--semi-color-danger); }
 .severity-medium { color: var(--semi-color-warning); }
 
+.hiding-review-card > .semi-card-body { padding: 16px 20px 20px; }
+
+.hiding-review-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.hiding-review-intro .semi-typography { max-width: 900px; line-height: 1.6; }
+
+.hiding-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hiding-review-item {
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--semi-color-text-0);
+  background: var(--semi-color-fill-0);
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.hiding-review-item:hover {
+  background: var(--semi-color-primary-light-default);
+  border-color: var(--semi-color-primary);
+}
+
+.hiding-review-heading,
+.hiding-review-metrics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hiding-review-heading strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hiding-review-heading span,
+.hiding-review-item small { color: var(--semi-color-text-2); font-size: 12px; }
+
+.hiding-review-metrics { gap: 6px 12px; color: var(--semi-color-text-1); font-size: 12px; }
+
 @media (max-width: 1100px) {
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-grid { grid-template-columns: 1fr; }
+  .hiding-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 800px) {
@@ -308,6 +386,7 @@ button, input { font: inherit; }
   .toolbar > .semi-select,
   .toolbar > .semi-input-wrapper { width: 100% !important; }
   .toolbar-spacer { width: 100%; margin-left: 0; }
+  .hiding-review-grid { grid-template-columns: 1fr; }
   .ranking-card .semi-table-row-head:nth-child(4),
   .ranking-card .semi-table-row-head:nth-child(5),
   .ranking-card .semi-table-row-head:nth-child(6),
@@ -328,4 +407,5 @@ button, input { font: inherit; }
   .ranking-card .semi-table-row-head:nth-child(7),
   .ranking-card .semi-table-row-cell:nth-child(7) { display: none !important; }
   .ranking-card col:nth-child(7) { display: none; }
+  .hiding-review-intro { flex-direction: column; gap: 8px; }
 }
